@@ -2,22 +2,18 @@ import * as esprima from 'esprima';
 import * as escodegen from 'escodegen';
 
 const parseCode = (codeToParse) => {
-    let funcInput1 = esprima.parseScript(codeToParse);
-    // console.log(funcInput1);
-    // funcInput1.body[0].expression.left.name = '<span>y</span>';
-    // const result = escodegen.generate(funcInput1);
-    // console.log('resultttttt');
-    // console.log(result);
     initTraverseHandler();
+    inithtmlTraverseHandler();
     let funcInput = esprima.parseScript(codeToParse);
     //TODO GET PARAMS FROM BUTTON
     const paramsEnv = {x: 1, y: 2, z: 3};
     let firstParsedTree = expTraverse(funcInput, {}, paramsEnv);
-    console.log(firstParsedTree);
-    return escodegen.generate(firstParsedTree);
+    let htmlData = createHtmlTag(firstParsedTree,'');
+    return htmlData;
 };
 
 let traverseHandler = {};
+let htmlTraverseHandler = {};
 
 const expTraverse = (ast, env, paramsEnv) => {
     try {
@@ -27,7 +23,6 @@ const expTraverse = (ast, env, paramsEnv) => {
         return null;
     }
 };
-
 
 const programTraverse = (ast, env, paramsEnv) => {
     return expTraverse(ast.body[0], env, paramsEnv);
@@ -42,6 +37,7 @@ const functionTraverse = (ast, env, paramsEnv) => {
 };
 
 const blockTraverse = (ast, env, paramsEnv) => {
+    console.log(ast);
     // var newBody = ast.body.map((bi) => expTraverse(bi,env));
     var newBody = ast.body.map((bi) => expTraverse(bi, env, paramsEnv)).filter((bi) =>
         (bi.type != 'VariableDeclaration') && (bi.type != 'ExpressionStatement'));
@@ -61,7 +57,6 @@ const substitute = (env, exp) => {
     return exp;
 };
 
-
 const variableDeclTraverse = (ast, env, paramsEnv) => {
     const updateEnv = (varDecl) => {
         var val = varDecl.init;
@@ -72,7 +67,7 @@ const variableDeclTraverse = (ast, env, paramsEnv) => {
                 pref = '(';
                 post = ')';
             }
-            env[varDecl.id.name] = pref+escodegen.generate(substitute(env, val))+post;
+            env[varDecl.id.name] = pref + escodegen.generate(substitute(env, val)) + post;
         }
         else env[varDecl.id.name] = null;
     };
@@ -87,28 +82,23 @@ const assignmentExpTraverse = (ast, env, paramsEnv) => {
         pref = '(';
         post = ')';
     }
-    env[ast.left.name] = pref+escodegen.generate(substitute(env, ast.right))+post;
+    env[ast.left.name] = pref + escodegen.generate(substitute(env, ast.right)) + post;
     return ast;
 };
 
+//TODO CHECK EXAMPLE WITH C++ IN TEST
 const whileExpTraverse = (ast, env, paramsEnv) => {
+    console.log('entered while');
+    console.log(ast);
     env = Object.assign({}, env);
     ast.test = substitute(env, ast.test);
     var newBody = expTraverse(ast.body, env);
     ast.body = newBody;
     const isTestTrue = checkTest(ast.test, paramsEnv);
-    ast.test = createIdHtmlTag(ast.test,isTestTrue);
     ast['isTestTrue'] = isTestTrue;
+    console.log('entered while2');
+    console.log(ast);
     return ast;
-};
-const createIdHtmlTag = (ast,isTestTrue) =>{
-    let color;
-    if(isTestTrue)
-        color = 'green';
-    else
-        color = 'red';
-    let testCode = escodegen.generate(ast);
-    return {type:'Identifier',name:'<span style="background-color:'+ color+';">'+testCode +'</span>'};
 };
 
 const ifExpTraverse = (ast, env, paramsEnv) => {
@@ -119,22 +109,9 @@ const ifExpTraverse = (ast, env, paramsEnv) => {
     ast.consequent = ifConseqRows;
     ast.alternate = ifAlterRows;
     const isTestTrue = checkTest(ast.test, paramsEnv);
-    console.log('ast testtt');
-    console.log(ast.test);
-    ast.test = createIdHtmlTag(ast.test,isTestTrue);
     ast['isTestTrue'] = isTestTrue;
     return ast;
 };
-
-//TODO For
-/*const forExpTraverse = (ast, env, paramsEnv) => {
-    const assignmentRow = expTraverse(ast.init, env, paramsEnv);
-    const conditionRow = escodegen.generate(ast.test, env, paramsEnv);
-    const updateRow = expTraverse(ast.update, env, paramsEnv);
-    const forBodyRows = expTraverse(ast.body, env, paramsEnv);
-    const forExp = makeRowExp(ast.type, ast.loc.start.line, '', '', conditionRow);
-    return [forExp, ...assignmentRow, ...updateRow, ...forBodyRows];
-};*/
 
 const checkTest = (ast, paramsEnv) => {
     const genCode = escodegen.generate(ast);
@@ -144,11 +121,8 @@ const checkTest = (ast, paramsEnv) => {
     return result;
 };
 
-const updateExpTraverse = (ast, env, paramsEnv) => {
-    return ast;
-};
-
 const returnTraverse = (ast, env, paramsEnv) => {
+
     ast.argument = substitute(env, ast.argument, paramsEnv);
     return ast;
 };
@@ -163,13 +137,73 @@ const initTraverseHandler = () => {
     traverseHandler['FunctionDeclaration'] = functionTraverse;
     traverseHandler['WhileStatement'] = whileExpTraverse;
     traverseHandler['IfStatement'] = ifExpTraverse;
-    // traverseHandler['ForStatement'] = forExpTraverse;
     traverseHandler['VariableDeclaration'] = variableDeclTraverse;
     traverseHandler['ReturnStatement'] = returnTraverse;
     traverseHandler['ExpressionStatement'] = genExpTraverse;
     traverseHandler['AssignmentExpression'] = assignmentExpTraverse;
-    traverseHandler['UpdateExpression'] = updateExpTraverse;
     traverseHandler['BlockStatement'] = blockTraverse;
+};
+
+const createHtmlTag = (ast,indentation) => {
+    if(ast)
+        return htmlTraverseHandler[ast.type](ast,indentation);
+    else
+        return '';
+};
+
+
+const functionTraverseHtml = (ast,indentation) => {
+    const params = ast.params.reduce((acc, p) => [...acc, p.name], []);
+    let html = '<br>';
+    html += 'function ' + ast.id.name + '(';
+    params.map((p) => html += p + ',');
+    html += ')';
+    return html + createHtmlTag(ast.body , indentation + '  ');
+};
+
+const blockTraverseHtml = (ast,indentation) => {
+    let html = indentation + '{<br>';
+    ast.body.map((exp) => html += (createHtmlTag(exp,indentation) + '<br>'));
+    html += indentation + '}<br>';
+    return html;
+};
+
+const ifExpTraverseHtml = (ast,indentation) => {
+    let html = indentation + 'if ';
+    let color;
+    if (ast.isTestTrue) color = 'green';
+    else color = 'red';
+    html += '<span style="background-color:' + color + ';">(' + escodegen.generate(ast.test) + ')</span>';
+    html += '<br>';
+    html +=  createHtmlTag(ast.consequent,indentation+'  ');
+    if(ast.alternate){
+        html += indentation + 'else'+ '<br>' + createHtmlTag(ast.alternate,indentation + '  ');
+    }
+    return html ;
+};
+
+const whileExpTraverseHtml = (ast,indentation) => {
+    let html = indentation + 'while ';
+    let color;
+    if (ast.isTestTrue) color = 'green';
+    else color = 'red';
+    html += '<span style="background-color:' + color + ';">(' + escodegen.generate(ast.test) + ')</span>';
+    html += '<br>';
+    html +=  createHtmlTag(ast.body,indentation+'  ');
+    return html ;
+};
+
+const returnTraverseHtml = (ast,indentation) => {
+    return indentation + escodegen.generate(ast);
+};
+
+
+const inithtmlTraverseHandler = () => {
+    htmlTraverseHandler['FunctionDeclaration'] = functionTraverseHtml;
+    htmlTraverseHandler['BlockStatement'] = blockTraverseHtml;
+    htmlTraverseHandler['WhileStatement'] = whileExpTraverseHtml;
+    htmlTraverseHandler['IfStatement'] = ifExpTraverseHtml;
+    htmlTraverseHandler['ReturnStatement'] = returnTraverseHtml;
 };
 
 
