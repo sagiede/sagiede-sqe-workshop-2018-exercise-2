@@ -77,17 +77,17 @@ const whileExpTraverse = (ast,env,paramsEnv) => {
     ast.test = substitute(env,ast.test);
     var newBody = expTraverse(ast.body,env);
     ast.body = newBody;
-    const isTestTrue = checkTest(ast.test,paramsEnv);
-    ast['isTestTrue'] = isTestTrue;
+    //const isTestTrue = checkTest(ast.test,paramsEnv);
+    //ast['isTestTrue'] = isTestTrue;
     return ast;
 };
 
+//TODO FIX
 const checkTest = (ast,paramsEnv) =>{
     ast = substitute(paramsEnv,ast);
     const result = evaluate(ast);
     console.log(result);
     return result;
-
 
 };
 
