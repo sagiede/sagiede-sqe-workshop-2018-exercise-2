@@ -8,7 +8,6 @@ const parseCode = (codeToParse) => {
     //TODO GET PARAMS FROM BUTTON
     const paramsEnv = {x:22 , y:33 , z:44};
     let firstParsedTree = expTraverse(funcInput,{},paramsEnv);
-    console.log(firstParsedTree);
     return escodegen.generate(firstParsedTree);
 };
 
@@ -77,51 +76,64 @@ const whileExpTraverse = (ast,env,paramsEnv) => {
     ast.test = substitute(env,ast.test);
     var newBody = expTraverse(ast.body,env);
     ast.body = newBody;
-    //const isTestTrue = checkTest(ast.test,paramsEnv);
-    //ast['isTestTrue'] = isTestTrue;
+    const isTestTrue = checkTest(ast.test,paramsEnv);
+    ast['isTestTrue'] = isTestTrue;
     return ast;
 };
 
+
 //TODO FIX
 const checkTest = (ast,paramsEnv) =>{
-    ast = substitute(paramsEnv,ast);
+    console.log('entereddd')
+    const genCode = escodegen.generate(ast);
+    const newAst = esprima.parseScript(genCode);
+    //TODO -> NOW WE HAVE REGULAR AST THAT WE NEED TO EVALUATE:
+    //TODO: OPTION 1: TRAVEL AST AND CHANGE IDENTIFIERS TO LITERALS
+    //TODO: OPTION 2: FIND STATIC EVALUATOR THAT ACCEPT ENV AS ARG THAT DOES THAT.
+    const res = evaluate(newAst,paramsEnv);
+    console.log(genCode);
+    console.log(newAst);
+    console.log(res);
+
+    //ast = substitute(paramsEnv,ast);
     const result = evaluate(ast);
-    console.log(result);
     return result;
 
 };
 
-const ifExpTraverse = (ast,env) => {
+const ifExpTraverse = (ast,env,paramsEnv) => {
     env = Object.assign({},env);
     ast.test = substitute(env,ast.test);
-    const ifConseqRows = expTraverse(ast.consequent,env);
-    const ifAlterRows = expTraverse(ast.alternate,env);
+    const ifConseqRows = expTraverse(ast.consequent,env,paramsEnv);
+    const ifAlterRows = expTraverse(ast.alternate,env,paramsEnv);
     ast.consequent = ifConseqRows;
     ast.alternate = ifAlterRows;
+    const isTestTrue = checkTest(ast.test,paramsEnv);
+    ast['isTestTrue'] = isTestTrue;
     return ast;
 };
 
 //TODO For
-const forExpTraverse = (ast,env) => {
-    const assignmentRow = expTraverse(ast.init);
-    const conditionRow = escodegen.generate(ast.test);
-    const updateRow = expTraverse(ast.update);
-    const forBodyRows = expTraverse(ast.body);
+const forExpTraverse = (ast,env,paramsEnv) => {
+    const assignmentRow = expTraverse(ast.init,env,paramsEnv);
+    const conditionRow = escodegen.generate(ast.test,env,paramsEnv);
+    const updateRow = expTraverse(ast.update,env,paramsEnv);
+    const forBodyRows = expTraverse(ast.body,env,paramsEnv);
     const forExp = makeRowExp(ast.type, ast.loc.start.line, '', '', conditionRow);
     return [forExp, ...assignmentRow, ...updateRow, ...forBodyRows];
 };
 
-const updateExpTraverse = (ast,env) => {
+const updateExpTraverse = (ast,env,paramsEnv) => {
     return ast;
 };
 
-const returnTraverse = (ast,env) => {
-    ast.argument = substitute(env,ast.argument);
+const returnTraverse = (ast,env,paramsEnv) => {
+    ast.argument = substitute(env,ast.argument,paramsEnv);
     return ast;
 };
 
-const genExpTraverse = (ast,env) => {
-    ast.expression =  expTraverse(ast.expression,env);
+const genExpTraverse = (ast,env,paramsEnv) => {
+    ast.expression =  expTraverse(ast.expression,env,paramsEnv);
     return ast;
 };
 
