@@ -1,80 +1,108 @@
 import * as esprima from 'esprima';
 import * as escodegen from 'escodegen';
+var evaluate = require('static-eval');
 
 const parseCode = (codeToParse) => {
-    return esprima.parseScript(codeToParse);
-};
-
-const getDataFromCode = (codeToParse) => {
     initTraverseHandler();
-    let funcInput = esprima.parseScript(codeToParse, {loc: true});
-    return expTraverse(funcInput);
-};
-
-const makeRowExp = (type, line, name, value, condition = '') => {
-    return {line: line, type: type, name: name, condition: condition, value: value};
+    let funcInput = esprima.parseScript(codeToParse);
+    //TODO GET PARAMS FROM BUTTON
+    const paramsEnv = {x:22 , y:33 , z:44};
+    let firstParsedTree = expTraverse(funcInput,{},paramsEnv);
+    console.log(firstParsedTree);
+    return escodegen.generate(firstParsedTree);
 };
 
 let traverseHandler = {};
 
-const expConcatReducer = (acc, exp) => acc.concat(expTraverse(exp));
-
-const expTraverse = (ast) => {
+const expTraverse = (ast,env,paramsEnv) => {
     try {
-        return traverseHandler[ast.type](ast);
+        return traverseHandler[ast.type](ast,env,paramsEnv);
     }
     catch (err){
-        return [];
+        return null;
     }
 };
 
 
-const programTraverse = (ast) => {
-    const programBodyRows = ast.body.reduce(expConcatReducer, []);
-    return [...programBodyRows];
+const programTraverse = (ast,env,paramsEnv) => {
+    return expTraverse(ast.body[0],env,paramsEnv);
 };
 
-const functionTraverse = (ast) => {
-    const params = ast.params.map((param) =>
-        makeRowExp(param.type, param.loc.start.line, param.name, ''));
-    const functionExp = makeRowExp(ast.type, ast.loc.start.line, ast.id.name, '');
-    const funcBody = expTraverse(ast.body);
-    return [functionExp, ...params, ...funcBody];
+const functionTraverse = (ast,env,paramsEnv) => {
+    const params = ast.params.reduce((acc,p) => [...acc, p.name],[]);
+    params.map((p) => env[p]=p);
+    var newBody = expTraverse(ast.body,env,paramsEnv);
+    ast.body = newBody;
+    return ast;
 };
 
-const blockTraverse = (ast) => {
-    const funcBody = ast.body.reduce(expConcatReducer, []);
-    return [ ...funcBody];
+const blockTraverse = (ast,env,paramsEnv) => {
+    // var newBody = ast.body.map((bi) => expTraverse(bi,env));
+    var newBody = ast.body.map((bi) => expTraverse(bi,env,paramsEnv)).filter((bi)=>
+        (bi.type != 'VariableDeclaration') && (bi.type != 'ExpressionStatement'));
+    ast.body = newBody;
+    return ast;
 };
 
-const variableDeclTraverse = (ast) => {
-    return ast.declarations.reduce((acc, varDecl) =>
-        acc.concat(makeRowExp(ast.type, varDecl.loc.start.line, varDecl.id.name, varDecl.init ? varDecl.init.value : '')), []);
+const substitute = (env,exp) => {
+    if(exp.type == 'Identifier'){
+        exp['name'] = env[exp.name];
+    }
+    if(exp.type == 'BinaryExpression'){
+        exp.left = substitute(env,exp.left);
+        exp.right = substitute(env,exp.right);
+    }
+    return exp;
 };
 
-const assignmentExpTraverse = (ast) => {
-    const rightExpValue = escodegen.generate(ast.right);
-    const assignmentExp = makeRowExp(ast.type,
-        ast.loc.start.line, ast.left.name, rightExpValue);
-    return [assignmentExp];
+
+const variableDeclTraverse = (ast,env,paramsEnv) => {
+    const updateEnv = (varDecl) => {
+        var val = varDecl.init;
+        if(val != undefined)
+            env[varDecl.id.name] = escodegen.generate(substitute(env,val));
+        else env[varDecl.id.name] = null;
+    };
+    ast.declarations.map(updateEnv);
+    return ast;
 };
 
-const whileExpTraverse = (ast) => {
-    const condition = escodegen.generate(ast.test);
-    const whileBodyRows = expTraverse(ast.body);
-    const whileExp = makeRowExp(ast.type, ast.loc.start.line, '', '', condition);
-    return [whileExp, ...whileBodyRows];
+const assignmentExpTraverse = (ast,env,paramsEnv) => {
+    env[ast.left.name] = escodegen.generate(substitute(env,ast.right));
+    return ast;
 };
 
-const ifExpTraverse = (ast) => {
-    const condition = escodegen.generate(ast.test);
-    const ifConseqRows = expTraverse(ast.consequent);
-    const ifAlterRows = expTraverse(ast.alternate);
-    const ifExp = makeRowExp(ast.type, ast.loc.start.line, '', '', condition);
-    return [ifExp, ...ifConseqRows, ...ifAlterRows];
+const whileExpTraverse = (ast,env,paramsEnv) => {
+    env = Object.assign({},env);
+    ast.test = substitute(env,ast.test);
+    var newBody = expTraverse(ast.body,env);
+    ast.body = newBody;
+    const isTestTrue = checkTest(ast.test,paramsEnv);
+    ast['isTestTrue'] = isTestTrue;
+    return ast;
 };
 
-const forExpTraverse = (ast) => {
+const checkTest = (ast,paramsEnv) =>{
+    ast = substitute(paramsEnv,ast);
+    const result = evaluate(ast);
+    console.log(result);
+    return result;
+
+
+};
+
+const ifExpTraverse = (ast,env) => {
+    env = Object.assign({},env);
+    ast.test = substitute(env,ast.test);
+    const ifConseqRows = expTraverse(ast.consequent,env);
+    const ifAlterRows = expTraverse(ast.alternate,env);
+    ast.consequent = ifConseqRows;
+    ast.alternate = ifAlterRows;
+    return ast;
+};
+
+//TODO For
+const forExpTraverse = (ast,env) => {
     const assignmentRow = expTraverse(ast.init);
     const conditionRow = escodegen.generate(ast.test);
     const updateRow = expTraverse(ast.update);
@@ -83,17 +111,18 @@ const forExpTraverse = (ast) => {
     return [forExp, ...assignmentRow, ...updateRow, ...forBodyRows];
 };
 
-const updateExpTraverse = (ast) => {
-    return [makeRowExp(ast.type, ast.loc.start.line, ast.argument.name, ast.operator)];
+const updateExpTraverse = (ast,env) => {
+    return ast;
 };
 
-const returnTraverse = (ast) => {
-    const returnExp = makeRowExp(ast.type, ast.loc.start.line, '', escodegen.generate(ast.argument));
-    return [returnExp];
+const returnTraverse = (ast,env) => {
+    ast.argument = substitute(env,ast.argument);
+    return ast;
 };
 
-const genExpTraverse = (ast) => {
-    return expTraverse(ast.expression);
+const genExpTraverse = (ast,env) => {
+    ast.expression =  expTraverse(ast.expression,env);
+    return ast;
 };
 
 const initTraverseHandler =  () => {
@@ -111,4 +140,4 @@ const initTraverseHandler =  () => {
 };
 
 
-export {parseCode, getDataFromCode, expTraverse};
+export {parseCode, expTraverse};

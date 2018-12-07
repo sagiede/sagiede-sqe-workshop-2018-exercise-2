@@ -1,17 +1,15 @@
 import $ from 'jquery';
-import {parseCode , getDataFromCode} from './code-analyzer';
+import {parseCode} from './code-analyzer';
 
 $(document).ready(function () {
     $('#codeSubmissionButton').click(() => {
         let codeToParse = $('#codePlaceholder').val();
         let parsedCode = parseCode(codeToParse);
-        let codeExpsTable = getDataFromCode(codeToParse);
-        makeTable(codeExpsTable);
-        $('#parsedCode').val(JSON.stringify(parsedCode, null, 2));
+        $('#parsedCode').val(parsedCode);
     });
 });
 
-const makeTable = (codeExpsTable) => {
+/*const makeTable = (codeExpsTable) => {
     let tableHeader = '<tr>\n' +
         '        <th>Line</th>\n' +
         '        <th>Type</th>\n' +
@@ -28,4 +26,4 @@ const makeTable = (codeExpsTable) => {
         '<td>' + '<span>' + jsonExp.value + '</span>' + '</td>' +
         '</tr>',tableHeader);
     $('#expsTable').html(htmlData);
-};
+};*/
