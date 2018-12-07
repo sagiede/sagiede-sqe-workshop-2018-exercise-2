@@ -5,7 +5,9 @@ $(document).ready(function () {
     $('#codeSubmissionButton').click(() => {
         let codeToParse = $('#codePlaceholder').val();
         let parsedCode = parseCode(codeToParse);
-        $('#parsedCode').val(parsedCode);
+        console.log(parsedCode);
+        // $('#parsedCode').val(parsedCode);
+        $('#output').html(parsedCode);
     });
 });
 

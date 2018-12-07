@@ -2,6 +2,12 @@ import * as esprima from 'esprima';
 import * as escodegen from 'escodegen';
 
 const parseCode = (codeToParse) => {
+    let funcInput1 = esprima.parseScript(codeToParse);
+    // console.log(funcInput1);
+    // funcInput1.body[0].expression.left.name = '<span>y</span>';
+    // const result = escodegen.generate(funcInput1);
+    // console.log('resultttttt');
+    // console.log(result);
     initTraverseHandler();
     let funcInput = esprima.parseScript(codeToParse);
     //TODO GET PARAMS FROM BUTTON
@@ -91,8 +97,18 @@ const whileExpTraverse = (ast, env, paramsEnv) => {
     var newBody = expTraverse(ast.body, env);
     ast.body = newBody;
     const isTestTrue = checkTest(ast.test, paramsEnv);
+    ast.test = createIdHtmlTag(ast.test,isTestTrue);
     ast['isTestTrue'] = isTestTrue;
     return ast;
+};
+const createIdHtmlTag = (ast,isTestTrue) =>{
+    let color;
+    if(isTestTrue)
+        color = 'green';
+    else
+        color = 'red';
+    let testCode = escodegen.generate(ast);
+    return {type:'Identifier',name:'<span style="background-color:'+ color+';">'+testCode +'</span>'};
 };
 
 const ifExpTraverse = (ast, env, paramsEnv) => {
@@ -103,6 +119,9 @@ const ifExpTraverse = (ast, env, paramsEnv) => {
     ast.consequent = ifConseqRows;
     ast.alternate = ifAlterRows;
     const isTestTrue = checkTest(ast.test, paramsEnv);
+    console.log('ast testtt');
+    console.log(ast.test);
+    ast.test = createIdHtmlTag(ast.test,isTestTrue);
     ast['isTestTrue'] = isTestTrue;
     return ast;
 };
@@ -123,7 +142,6 @@ const checkTest = (ast, paramsEnv) => {
     newAst = substitute(paramsEnv, newAst.body[0].expression);
     const result = eval(escodegen.generate(newAst));
     return result;
-
 };
 
 const updateExpTraverse = (ast, env, paramsEnv) => {
