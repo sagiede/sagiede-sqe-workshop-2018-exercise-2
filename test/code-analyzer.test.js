@@ -1,164 +1,72 @@
 import assert from 'assert';
-import {parseCode, getDataFromCode,expTraverse} from '../src/js/code-analyzer';
+import {parseCode, getDataFromCode, expTraverse} from '../src/js/code-analyzer';
 
-describe('parser Tests', () => {
-    it('is parsing an empty function correctly', () => {
-        assert.equal(
-            JSON.stringify(parseCode('')),
-            '{"type":"Program","body":[],"sourceType":"script"}'
-        );
-    });
-
-    it('is parsing a simple Identifier correctly', () => {
-        assert.equal(
-            JSON.stringify(parseCode('let a = 1;')),
-            '{"type":"Program","body":[{"type":"VariableDeclaration","declarations":[{"type":"VariableDeclarator","id":{"type":"Identifier","name":"a"},"init":{"type":"Literal","value":1,"raw":"1"}}],"kind":"let"}],"sourceType":"script"}'
-        );
+describe('general Tests', () => {
+    const userInput = '11,[100,101,true]';
+    let funcInput = 'function foo(x,y){\n' +
+        '    let a = [x,x+1,x+2];\n' +
+        '    let b;\n' +
+        '    b = a[1]-a[0];\n' +
+        '    let c = 12;\n' +
+        '    if(a[b] < c){\n' +
+        '      b = 0;\n' +
+        '      return y[b];\n' +
+        '    }\n' +
+        '    else{\n' +
+        '       while(y[0] < 99){\n' +
+        '         x = x +1;\n' +
+        '         return b + 1;\n' +
+        '       }\n' +
+        '       while(y[0] < 101){\n' +
+        '         c = c +1;\n' +
+        '         return a[0];\n' +
+        '       }\n' +
+        '       b = 1;\n' +
+        '      return y[b];\n' +
+        '    }\n' +
+        '}';
+    const funcResult = '"<br>function foo(x,y)  {<br>  if <span style=\\"background-color:red;\\">([x,x+1,x+2][([x,x+1,x+2][1] - [x,x+1,x+2][0])] < 12)</span><br>    {<br>    return y[0];<br>    }<br>  else<br>    {<br>    while <span style=\\"background-color:red;\\">(y[0] < 99)</span><br>      {<br>      x = x + 1<br>      return ([x,x+1,x+2][1] - [x,x+1,x+2][0]) + 1;<br>      }<br><br>    while <span style=\\"background-color:green;\\">(y[0] < 101)</span><br>      {<br>      return [x,x+1,x+2][0];<br>      }<br><br>    return y[1];<br>    }<br><br>  }<br>"';
+    it('func1', () => {
+        assert.deepEqual(JSON.stringify(parseCode(funcInput, userInput)), funcResult);
     });
 });
 
-describe('The javascript Traversers', () => {
-    it('empty program', () => {
-        assert.deepEqual(getDataFromCode(''), []);
+describe('simple Tests', () => {
+    const userInput1 = 'true';
+    const funcInput1 = 'function foo(x){\n' +
+        '    let a = true;\n' +
+        '    let b = !a;\n' +
+        '    let c = a & b;\n' +
+        '    return c;\n' +
+        '}';
+    const funcResult1 ='"<br>function foo(x)  {<br>  return (true&!true);<br>  }<br>"';
+    it('func2', () => {
+        assert.deepEqual(JSON.stringify(parseCode(funcInput1, userInput1)), funcResult1);
     });
 
-    it('VariableDeclaration', () => {
-        assert.deepEqual(getDataFromCode('let x,y;'),
-            [{'line': 1, 'type': 'VariableDeclaration', 'name': 'x', 'condition': '', 'value': ''}, {
-                'line': 1,
-                'type': 'VariableDeclaration',
-                'name': 'y',
-                'condition': '',
-                'value': ''
-            }]);
+    const userInput2 = '20';
+    const funcInput2 = 'function foo(x){\n' +
+        '    let a = [x,x+1];\n' +
+        '    a[0] = 1;\n' +
+        '    if(x > 1){\n' +
+        '       return a[0];\n' +
+        '    }\n' +
+        '}';
+    const funcResult2 ='"<br>function foo(x)  {<br>  if <span style=\\"background-color:green;\\">(x > 1)</span><br>    {<br>    return 1;<br>    }<br><br>  }<br>"';
+    it('func3', () => {
+        assert.deepEqual(JSON.stringify(parseCode(funcInput2, userInput2)), funcResult2);
     });
 
-    it('AssignmentExpression', () => {
-        assert.deepEqual(getDataFromCode('let x,y;\n x = 5;')[2], {
-            'line': 2,
-            'type': 'AssignmentExpression',
-            'name': 'x',
-            'condition': '',
-            'value': '5'
-        });
+    const userInput3 = '20';
+    const funcInput3 = 'function foo(x){\n' +
+        '    let a = [x,x+1];\n' +
+        '    a[0] = 1;\n' +
+        '    if(x > 1){\n' +
+        '       return a[0];\n' +
+        '    }\n' +
+        '}';
+    const funcResult3 ='"<br>function foo(x)  {<br>  if <span style=\\"background-color:green;\\">(x > 1)</span><br>    {<br>    return 1;<br>    }<br><br>  }<br>"';
+    it('func3', () => {
+        assert.deepEqual(JSON.stringify(parseCode(funcInput3, userInput3)), funcResult3);
     });
-
-    it('UpdateExpression', () => {
-        assert.deepEqual(getDataFromCode('let x,y;\n x = 5;\n x++;')[3], {
-            'line': 3,
-            'type': 'UpdateExpression',
-            'name': 'x',
-            'condition': '',
-            'value': '++'
-        });
-    });
-
-    it('WhileStatement', () => {
-        assert.deepEqual(getDataFromCode('let i =0;\n' +
-            'while (i < 5){\n' +
-            'i++;\n' +
-            '}\n' +
-            'i = i +5;')
-            ,[{'line': 1, 'type': 'VariableDeclaration', 'name': 'i', 'condition': '', 'value': 0},
-            {'line': 2, 'type': 'WhileStatement', 'name': '', 'condition': 'i < 5', 'value': ''},
-            {'line': 3, 'type': 'UpdateExpression', 'name': 'i', 'condition': '', 'value': '++'},
-            {'line': 5, 'type': 'AssignmentExpression', 'name': 'i', 'condition': '', 'value': 'i + 5'}]);
-    });
-
-    it('IfElseStatement', () => {
-        assert.deepEqual(getDataFromCode('if (X < V[mid])\n' +
-            '            high = mid - 1;\n' +
-            '        else if (X > V[mid])\n' +
-            '            low = mid + 1;\n' +
-            '        else\n' +
-            '            low = mid - 1;'),
-        [{'line':1,'type':'IfStatement','name':'','condition':'X < V[mid]','value':''},
-            {'line':2,'type':'AssignmentExpression','name':'high','condition':'','value':'mid - 1'},
-            {'line':3,'type':'IfStatement','name':'','condition':'X > V[mid]','value':''},
-            {'line':4,'type':'AssignmentExpression','name':'low','condition':'','value':'mid + 1'},
-            {'line':6,'type':'AssignmentExpression','name':'low','condition':'','value':'mid - 1'}]);
-    });
-
-    it('regularIfStatement', () => {
-        assert.deepEqual(getDataFromCode('if (X < V[mid])\n' +
-            '            low = mid - 1;'),
-        [{'line':1,'type':'IfStatement','name':'','condition':'X < V[mid]','value':''},
-            {'line':2,'type':'AssignmentExpression','name':'low','condition':'','value':'mid - 1'}]);
-    });
-
-    it('IfBlockStatement', () => {
-        assert.deepEqual(getDataFromCode('if (X < V[mid])\n' +
-            '            high = mid - 1;\n' +
-            '        else if (X > V[mid])\n' +
-            '            {low = mid + 1;}\n' +
-            '        else\n' +
-            '            {low = mid - 1;}'),
-        [{'line':1,'type':'IfStatement','name':'','condition':'X < V[mid]','value':''},
-            {'line':2,'type':'AssignmentExpression','name':'high','condition':'','value':'mid - 1'},
-            {'line':3,'type':'IfStatement','name':'','condition':'X > V[mid]','value':''},
-            {'line':4,'type':'AssignmentExpression','name':'low','condition':'','value':'mid + 1'},
-            {'line':6,'type':'AssignmentExpression','name':'low','condition':'','value':'mid - 1'}]);
-    });
-
-    it('function and return statement', () => {
-        assert.deepEqual(getDataFromCode('function binarySearch(x,n){\n' +
-            '    return n;\n' +
-            '}'),
-        [{'line':1,'type':'FunctionDeclaration','name':'binarySearch','condition':'','value':''},
-            {'line':1,'type':'Identifier','name':'x','condition':'','value':''},
-            {'line':1,'type':'Identifier','name':'n','condition':'','value':''},
-            {'line':2,'type':'ReturnStatement','name':'','condition':'','value':'n'}]);
-    });
-
-    it('ForStatement', () => {
-        assert.deepEqual(getDataFromCode('for(i = 0; i<7; i++){\n' +
-            '  x = x*x;\n' +
-            '}  '),
-        [{'line':1,'type':'ForStatement','name':'','condition':'i < 7','value':''},
-            {'line':1,'type':'AssignmentExpression','name':'i','condition':'','value':'0'},
-            {'line':1,'type':'UpdateExpression','name':'i','condition':'','value':'++'},
-            {'line':2,'type':'AssignmentExpression','name':'x','condition':'','value':'x * x'}]);
-    });
-
-    it('badAst', () => {
-        assert.deepEqual(expTraverse({type:'Bad AST'}),[]);
-    });
-
-});
-
-const fullFuncString = 'function binarySearch(X, V, n){\n' +
-    '    let low, high, mid;\n' +
-    '    low = 0;\n' +
-    '    high = n - 1;\n' +
-    '    while (low <= high) {\n' +
-    '        mid = (low + high)/2;\n' +
-    '        if (X < V[mid])\n' +
-    '            high = mid - 1;\n' +
-    '        else if (X > V[mid])\n' +
-    '            low = mid + 1;\n' +
-    '        else\n' +
-    '            return mid;\n' +
-    '    }\n' +
-    '    return -1;\n' +
-    '}';
-
-describe('full program Tests', () => {
-    it('checking program that includes all exps ', () => {assert.deepEqual(getDataFromCode(fullFuncString),
-        [{'line':1,'type':'FunctionDeclaration','name':'binarySearch','condition':'','value':''},
-            {'line':1,'type':'Identifier','name':'X','condition':'','value':''},
-            {'line':1,'type':'Identifier','name':'V','condition':'','value':''},
-            {'line':1,'type':'Identifier','name':'n','condition':'','value':''},
-            {'line':2,'type':'VariableDeclaration','name':'low','condition':'','value':''},
-            {'line':2,'type':'VariableDeclaration','name':'high','condition':'','value':''},
-            {'line':2,'type':'VariableDeclaration','name':'mid','condition':'','value':''},
-            {'line':3,'type':'AssignmentExpression','name':'low','condition':'','value':'0'},
-            {'line':4,'type':'AssignmentExpression','name':'high','condition':'','value':'n - 1'},
-            {'line':5,'type':'WhileStatement','name':'','condition':'low <= high','value':''},
-            {'line':6,'type':'AssignmentExpression','name':'mid','condition':'','value':'(low + high) / 2'},
-            {'line':7,'type':'IfStatement','name':'','condition':'X < V[mid]','value':''},
-            {'line':8,'type':'AssignmentExpression','name':'high','condition':'','value':'mid - 1'},
-            {'line':9,'type':'IfStatement','name':'','condition':'X > V[mid]','value':''},
-            {'line':10,'type':'AssignmentExpression','name':'low','condition':'','value':'mid + 1'},
-            {'line':12,'type':'ReturnStatement','name':'','condition':'','value':'mid'},
-            {'line':14,'type':'ReturnStatement','name':'','condition':'','value':'-1'}]);});
 });

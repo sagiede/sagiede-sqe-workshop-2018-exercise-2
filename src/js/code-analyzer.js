@@ -7,7 +7,10 @@ const parseCode = (codeToParse, userParams) => {
     let funcInput = esprima.parseScript(codeToParse);
     const jsParams = eval('[' + userParams + ']');
     let firstParsedTree = functionTraverse(funcInput.body[0], jsParams);
-    return createHtmlTag(firstParsedTree, '');
+    let result = createHtmlTag(firstParsedTree, '');
+    console.log('heyyyyyyyy');
+    console.log(JSON.stringify(result));
+    return result;
 };
 
 let traverseHandler = {};
@@ -18,7 +21,7 @@ const expTraverse = (ast, env, paramsEnv) => {
         return traverseHandler[ast.type](ast, env, paramsEnv);
     }
     catch (err) {
-        throw err;
+        return null;
     }
 };
 
@@ -59,6 +62,7 @@ const substitute = (env, exp) => {
         exp.elements = exp.elements.map((member) => substitute(env, member));
     }
     else if (exp.type == 'UnaryExpression') {
+        console.log('heyyy i took if pathh')
         exp.argument = substitute(env, exp.argument);
     }
     return substituteMember(env, exp);
@@ -66,8 +70,13 @@ const substitute = (env, exp) => {
 
 const substituteMember = (env, exp) => {
     if (exp.type == 'MemberExpression') {
-        exp.object = substitute(env, exp.object);
-        exp.property = substitute(env, exp.property);
+        if (env[escodegen.generate(exp)]) {
+            exp = {type: 'Identifier', name: env[escodegen.generate(exp)]};
+        }
+        else {
+            exp.object = substitute(env, exp.object);
+            exp.property = substitute(env, exp.property);
+        }
     }
     return exp;
 };
@@ -113,7 +122,7 @@ const ifExpTraverse = (ast, env, paramsEnv) => {
     let newEnv = Object.assign({}, env);
     ast.test = substitute(newEnv, ast.test);
     const ifConseqRows = expTraverse(ast.consequent, Object.assign({}, newEnv), paramsEnv);
-    const ifAlterRows = expTraverse(ast.alternate, Object.assign({}, newEnv), paramsEnv);
+    let ifAlterRows = expTraverse(ast.alternate, Object.assign({}, newEnv), paramsEnv);
     ast.consequent = ifConseqRows;
     ast.alternate = ifAlterRows;
     ast['isTestTrue'] = checkTest(ast.test, paramsEnv);
@@ -159,10 +168,7 @@ const initTraverseHandler = () => {
 };
 
 const createHtmlTag = (ast, indentation) => {
-    if (ast)
-        return htmlTraverseHandler[ast.type](ast, indentation);
-    else
-        return '';
+    return htmlTraverseHandler[ast.type](ast, indentation);
 };
 
 
@@ -171,6 +177,7 @@ const functionTraverseHtml = (ast, indentation) => {
     let html = '<br>';
     html += 'function ' + ast.id.name + '(';
     params.map((p) => html += p + ',');
+    html = html.slice(0, html.length - 1);
     html += ')';
     return html + createHtmlTag(ast.body, indentation + '  ');
 };
