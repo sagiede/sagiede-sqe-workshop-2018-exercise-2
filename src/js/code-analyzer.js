@@ -1,46 +1,52 @@
 import * as esprima from 'esprima';
 import * as escodegen from 'escodegen';
 
-const parseCode = (codeToParse) => {
+const parseCode = (codeToParse, userParams) => {
     initTraverseHandler();
     inithtmlTraverseHandler();
     let funcInput = esprima.parseScript(codeToParse);
-    //TODO GET PARAMS FROM BUTTON
-    const paramsEnv = {x: 1, y: 2, z: 3};
-    let firstParsedTree = expTraverse(funcInput, {}, paramsEnv);
-    let htmlData = createHtmlTag(firstParsedTree,'');
+    const jsParams = eval('[' + userParams + ']');
+    let firstParsedTree = functionTraverse(funcInput.body[0], jsParams);
+    let htmlData = createHtmlTag(firstParsedTree, '');
     return htmlData;
 };
 
 let traverseHandler = {};
 let htmlTraverseHandler = {};
 
-const expTraverse = (ast, env, paramsEnv) => {
+    const expTraverse = (ast, env, paramsEnv) => {
     try {
         return traverseHandler[ast.type](ast, env, paramsEnv);
     }
     catch (err) {
+        throw err;
         return null;
     }
 };
 
-const programTraverse = (ast, env, paramsEnv) => {
-    return expTraverse(ast.body[0], env, paramsEnv);
-};
-
-const functionTraverse = (ast, env, paramsEnv) => {
+const functionTraverse = (ast, jsParams) => {
+    var env = {};
+    var paramsEnv = {};
     const params = ast.params.reduce((acc, p) => [...acc, p.name], []);
     params.map((p) => env[p] = p);
+    for (var i = 0; i < jsParams.length; i++) {
+        if(jsParams[i].length)
+            paramsEnv[params[i]] = '[' + jsParams[i].toString() + ']';
+        else
+            paramsEnv[params[i]] = jsParams[i].toString();
+    }
     var newBody = expTraverse(ast.body, env, paramsEnv);
     ast.body = newBody;
     return ast;
 };
 
 const blockTraverse = (ast, env, paramsEnv) => {
-    console.log(ast);
-    // var newBody = ast.body.map((bi) => expTraverse(bi,env));
-    var newBody = ast.body.map((bi) => expTraverse(bi, env, paramsEnv)).filter((bi) =>
-        (bi.type != 'VariableDeclaration') && (bi.type != 'ExpressionStatement'));
+    var newBody = ast.body.map((bi) => expTraverse(bi, env, paramsEnv)).filter((bi) => {
+        if (bi.type == 'ExpressionStatement'){
+            return (paramsEnv[bi.expression.left.name] != undefined);
+        }
+        return (bi.type != 'VariableDeclaration');
+    });
     ast.body = newBody;
     return ast;
 };
@@ -53,7 +59,16 @@ const substitute = (env, exp) => {
         exp.left = substitute(env, exp.left);
         exp.right = substitute(env, exp.right);
     }
-    //TODO CHECK UNARY,MEMBER
+     if (exp.type == 'ArrayExpression') {
+        exp.elements = exp.elements.map((member) => substitute(env, member));
+    }
+    if (exp.type == 'UnaryExpression') {
+        exp.argument = substitute(env, exp.argument);
+    }
+    if (exp.type == 'MemberExpression') {
+        exp.object = substitute(env,exp.object);
+        exp.property = substitute(env,exp.property);
+    }
     return exp;
 };
 
@@ -67,7 +82,7 @@ const variableDeclTraverse = (ast, env, paramsEnv) => {
                 pref = '(';
                 post = ')';
             }
-            env[varDecl.id.name] = pref + escodegen.generate(substitute(env, val)) + post;
+            env[varDecl.id.name] = pref + escodegen.generate(substitute(env, val),{format:{compact:true}}) + post;
         }
         else env[varDecl.id.name] = null;
     };
@@ -82,22 +97,17 @@ const assignmentExpTraverse = (ast, env, paramsEnv) => {
         pref = '(';
         post = ')';
     }
-    env[ast.left.name] = pref + escodegen.generate(substitute(env, ast.right)) + post;
+    extendsEnv(ast.left, pref + escodegen.generate(substitute(env, ast.right)) + post, env);
     return ast;
 };
 
-//TODO CHECK EXAMPLE WITH C++ IN TEST
 const whileExpTraverse = (ast, env, paramsEnv) => {
-    console.log('entered while');
-    console.log(ast);
     env = Object.assign({}, env);
     ast.test = substitute(env, ast.test);
-    var newBody = expTraverse(ast.body, env);
+    var newBody = expTraverse(ast.body, env,paramsEnv);
     ast.body = newBody;
     const isTestTrue = checkTest(ast.test, paramsEnv);
     ast['isTestTrue'] = isTestTrue;
-    console.log('entered while2');
-    console.log(ast);
     return ast;
 };
 
@@ -132,9 +142,17 @@ const genExpTraverse = (ast, env, paramsEnv) => {
     return ast;
 };
 
+const extendsEnv = (ast, rightSide, env) => {
+    if (ast.type == 'Identifier') {
+        env[ast.name] = rightSide;
+    }
+    else if (ast.type == 'MemberExpression') {
+        env[escodegen.generate(ast)] = rightSide;
+    }
+};
+
+
 const initTraverseHandler = () => {
-    traverseHandler['Program'] = programTraverse;
-    traverseHandler['FunctionDeclaration'] = functionTraverse;
     traverseHandler['WhileStatement'] = whileExpTraverse;
     traverseHandler['IfStatement'] = ifExpTraverse;
     traverseHandler['VariableDeclaration'] = variableDeclTraverse;
@@ -144,56 +162,64 @@ const initTraverseHandler = () => {
     traverseHandler['BlockStatement'] = blockTraverse;
 };
 
-const createHtmlTag = (ast,indentation) => {
-    if(ast)
-        return htmlTraverseHandler[ast.type](ast,indentation);
+const createHtmlTag = (ast, indentation) => {
+    if (ast)
+        return htmlTraverseHandler[ast.type](ast, indentation);
     else
         return '';
 };
 
 
-const functionTraverseHtml = (ast,indentation) => {
+const functionTraverseHtml = (ast, indentation) => {
     const params = ast.params.reduce((acc, p) => [...acc, p.name], []);
     let html = '<br>';
     html += 'function ' + ast.id.name + '(';
     params.map((p) => html += p + ',');
     html += ')';
-    return html + createHtmlTag(ast.body , indentation + '  ');
+    return html + createHtmlTag(ast.body, indentation + '  ');
 };
 
-const blockTraverseHtml = (ast,indentation) => {
+const blockTraverseHtml = (ast, indentation) => {
     let html = indentation + '{<br>';
-    ast.body.map((exp) => html += (createHtmlTag(exp,indentation) + '<br>'));
+    ast.body.map((exp) => html += (createHtmlTag(exp, indentation) + '<br>'));
     html += indentation + '}<br>';
     return html;
 };
 
-const ifExpTraverseHtml = (ast,indentation) => {
+const ifExpTraverseHtml = (ast, indentation) => {
     let html = indentation + 'if ';
     let color;
     if (ast.isTestTrue) color = 'green';
     else color = 'red';
     html += '<span style="background-color:' + color + ';">(' + escodegen.generate(ast.test) + ')</span>';
     html += '<br>';
-    html +=  createHtmlTag(ast.consequent,indentation+'  ');
-    if(ast.alternate){
-        html += indentation + 'else'+ '<br>' + createHtmlTag(ast.alternate,indentation + '  ');
+    html += createHtmlTag(ast.consequent, indentation + '  ');
+    if (ast.alternate) {
+        html += indentation + 'else' + '<br>' + createHtmlTag(ast.alternate, indentation + '  ');
     }
-    return html ;
+    return html;
 };
 
-const whileExpTraverseHtml = (ast,indentation) => {
+const whileExpTraverseHtml = (ast, indentation) => {
     let html = indentation + 'while ';
     let color;
     if (ast.isTestTrue) color = 'green';
     else color = 'red';
     html += '<span style="background-color:' + color + ';">(' + escodegen.generate(ast.test) + ')</span>';
     html += '<br>';
-    html +=  createHtmlTag(ast.body,indentation+'  ');
-    return html ;
+    html += createHtmlTag(ast.body, indentation + '  ');
+    return html;
 };
 
-const returnTraverseHtml = (ast,indentation) => {
+const returnTraverseHtml = (ast, indentation) => {
+    return indentation + escodegen.generate(ast);
+};
+
+const genExpTraverseHtml = (ast, indentation) => {
+    return createHtmlTag(ast.expression,indentation);
+};
+
+const assignmentExpTraverseHtml = (ast, indentation) => {
     return indentation + escodegen.generate(ast);
 };
 
@@ -204,6 +230,8 @@ const inithtmlTraverseHandler = () => {
     htmlTraverseHandler['WhileStatement'] = whileExpTraverseHtml;
     htmlTraverseHandler['IfStatement'] = ifExpTraverseHtml;
     htmlTraverseHandler['ReturnStatement'] = returnTraverseHtml;
+    htmlTraverseHandler['ExpressionStatement'] = genExpTraverseHtml;
+    htmlTraverseHandler['AssignmentExpression'] = assignmentExpTraverseHtml;
 };
 
 
