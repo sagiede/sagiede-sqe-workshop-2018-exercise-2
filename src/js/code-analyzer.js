@@ -7,47 +7,43 @@ const parseCode = (codeToParse, userParams) => {
     let funcInput = esprima.parseScript(codeToParse);
     const jsParams = eval('[' + userParams + ']');
     let firstParsedTree = functionTraverse(funcInput.body[0], jsParams);
-    let htmlData = createHtmlTag(firstParsedTree, '');
-    return htmlData;
+    return createHtmlTag(firstParsedTree, '');
 };
 
 let traverseHandler = {};
 let htmlTraverseHandler = {};
 
-    const expTraverse = (ast, env, paramsEnv) => {
+const expTraverse = (ast, env, paramsEnv) => {
     try {
         return traverseHandler[ast.type](ast, env, paramsEnv);
     }
     catch (err) {
         throw err;
-        return null;
     }
 };
 
 const functionTraverse = (ast, jsParams) => {
-    var env = {};
-    var paramsEnv = {};
+    let env = {};
+    let paramsEnv = {};
     const params = ast.params.reduce((acc, p) => [...acc, p.name], []);
     params.map((p) => env[p] = p);
-    for (var i = 0; i < jsParams.length; i++) {
-        if(jsParams[i].length)
+    for (let i = 0; i < jsParams.length; i++) {
+        if (jsParams[i].length)
             paramsEnv[params[i]] = '[' + jsParams[i].toString() + ']';
         else
             paramsEnv[params[i]] = jsParams[i].toString();
     }
-    var newBody = expTraverse(ast.body, env, paramsEnv);
-    ast.body = newBody;
+    ast.body = expTraverse(ast.body, env, paramsEnv);
     return ast;
 };
 
 const blockTraverse = (ast, env, paramsEnv) => {
-    var newBody = ast.body.map((bi) => expTraverse(bi, env, paramsEnv)).filter((bi) => {
-        if (bi.type == 'ExpressionStatement'){
+    ast.body = ast.body.map((bi) => expTraverse(bi, env, paramsEnv)).filter((bi) => {
+        if (bi.type == 'ExpressionStatement') {
             return (paramsEnv[bi.expression.left.name] != undefined);
         }
         return (bi.type != 'VariableDeclaration');
     });
-    ast.body = newBody;
     return ast;
 };
 
@@ -55,34 +51,38 @@ const substitute = (env, exp) => {
     if (exp.type == 'Identifier') {
         exp['name'] = env[exp.name];
     }
-    if (exp.type == 'BinaryExpression') {
+    else if (exp.type == 'BinaryExpression') {
         exp.left = substitute(env, exp.left);
         exp.right = substitute(env, exp.right);
     }
-     if (exp.type == 'ArrayExpression') {
+    else if (exp.type == 'ArrayExpression') {
         exp.elements = exp.elements.map((member) => substitute(env, member));
     }
-    if (exp.type == 'UnaryExpression') {
+    else if (exp.type == 'UnaryExpression') {
         exp.argument = substitute(env, exp.argument);
     }
+    return substituteMember(env, exp);
+};
+
+const substituteMember = (env, exp) => {
     if (exp.type == 'MemberExpression') {
-        exp.object = substitute(env,exp.object);
-        exp.property = substitute(env,exp.property);
+        exp.object = substitute(env, exp.object);
+        exp.property = substitute(env, exp.property);
     }
     return exp;
 };
 
-const variableDeclTraverse = (ast, env, paramsEnv) => {
+const variableDeclTraverse = (ast, env) => {
     const updateEnv = (varDecl) => {
-        var val = varDecl.init;
+        let val = varDecl.init;
         if (val != undefined) {
-            var pref = '';
-            var post = '';
+            let pref = '';
+            let post = '';
             if (val.type == 'BinaryExpression') {
                 pref = '(';
                 post = ')';
             }
-            env[varDecl.id.name] = pref + escodegen.generate(substitute(env, val),{format:{compact:true}}) + post;
+            env[varDecl.id.name] = pref + escodegen.generate(substitute(env, val), {format: {compact: true}}) + post;
         }
         else env[varDecl.id.name] = null;
     };
@@ -90,9 +90,9 @@ const variableDeclTraverse = (ast, env, paramsEnv) => {
     return ast;
 };
 
-const assignmentExpTraverse = (ast, env, paramsEnv) => {
-    var pref = '';
-    var post = '';
+const assignmentExpTraverse = (ast, env) => {
+    let pref = '';
+    let post = '';
     if (ast.right.type == 'BinaryExpression') {
         pref = '(';
         post = ')';
@@ -104,10 +104,8 @@ const assignmentExpTraverse = (ast, env, paramsEnv) => {
 const whileExpTraverse = (ast, env, paramsEnv) => {
     env = Object.assign({}, env);
     ast.test = substitute(env, ast.test);
-    var newBody = expTraverse(ast.body, env,paramsEnv);
-    ast.body = newBody;
-    const isTestTrue = checkTest(ast.test, paramsEnv);
-    ast['isTestTrue'] = isTestTrue;
+    ast.body = expTraverse(ast.body, env, paramsEnv);
+    ast['isTestTrue'] = checkTest(ast.test, paramsEnv);
     return ast;
 };
 
@@ -118,17 +116,15 @@ const ifExpTraverse = (ast, env, paramsEnv) => {
     const ifAlterRows = expTraverse(ast.alternate, Object.assign({}, newEnv), paramsEnv);
     ast.consequent = ifConseqRows;
     ast.alternate = ifAlterRows;
-    const isTestTrue = checkTest(ast.test, paramsEnv);
-    ast['isTestTrue'] = isTestTrue;
+    ast['isTestTrue'] = checkTest(ast.test, paramsEnv);
     return ast;
 };
 
 const checkTest = (ast, paramsEnv) => {
     const genCode = escodegen.generate(ast);
-    var newAst = esprima.parseScript(genCode);
+    let newAst = esprima.parseScript(genCode);
     newAst = substitute(paramsEnv, newAst.body[0].expression);
-    const result = eval(escodegen.generate(newAst));
-    return result;
+    return eval(escodegen.generate(newAst));
 };
 
 const returnTraverse = (ast, env, paramsEnv) => {
@@ -216,7 +212,7 @@ const returnTraverseHtml = (ast, indentation) => {
 };
 
 const genExpTraverseHtml = (ast, indentation) => {
-    return createHtmlTag(ast.expression,indentation);
+    return createHtmlTag(ast.expression, indentation);
 };
 
 const assignmentExpTraverseHtml = (ast, indentation) => {
