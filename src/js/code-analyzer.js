@@ -6,11 +6,8 @@ const parseCode = (codeToParse, userParams) => {
     inithtmlTraverseHandler();
     let funcInput = esprima.parseScript(codeToParse);
     const jsParams = eval('[' + userParams + ']');
-    let firstParsedTree = functionTraverse(funcInput.body[0], jsParams);
-    let result = createHtmlTag(firstParsedTree, '');
-    console.log('heyyyyyyyy');
-    console.log(JSON.stringify(result));
-    return result;
+    let firstParsedTree = programTraverse(funcInput, jsParams);
+    return createHtmlTag(firstParsedTree, '');
 };
 
 let traverseHandler = {};
@@ -24,9 +21,15 @@ const expTraverse = (ast, env, paramsEnv) => {
         return null;
     }
 };
-
-const functionTraverse = (ast, jsParams) => {
+const programTraverse = (ast,jsParams) => {
     let env = {};
+    ast.body = ast.body.map((bi) => expTraverse(bi, env, jsParams)).filter((bi) => {
+        return (bi.type != 'ExpressionStatement') && (bi.type != 'VariableDeclaration');
+    });
+    return ast;
+};
+
+const functionTraverse = (ast,env, jsParams) => {
     let paramsEnv = {};
     const params = ast.params.reduce((acc, p) => [...acc, p.name], []);
     params.map((p) => env[p] = p);
@@ -62,7 +65,6 @@ const substitute = (env, exp) => {
         exp.elements = exp.elements.map((member) => substitute(env, member));
     }
     else if (exp.type == 'UnaryExpression') {
-        console.log('heyyy i took if pathh')
         exp.argument = substitute(env, exp.argument);
     }
     return substituteMember(env, exp);
@@ -151,13 +153,14 @@ const extendsEnv = (ast, rightSide, env) => {
     if (ast.type == 'Identifier') {
         env[ast.name] = rightSide;
     }
-    else if (ast.type == 'MemberExpression') {
+    else {  //ast.type == 'MemberExpression'
         env[escodegen.generate(ast)] = rightSide;
     }
 };
 
 
 const initTraverseHandler = () => {
+    traverseHandler['FunctionDeclaration'] = functionTraverse;
     traverseHandler['WhileStatement'] = whileExpTraverse;
     traverseHandler['IfStatement'] = ifExpTraverse;
     traverseHandler['VariableDeclaration'] = variableDeclTraverse;
@@ -182,6 +185,11 @@ const functionTraverseHtml = (ast, indentation) => {
     return html + createHtmlTag(ast.body, indentation + '  ');
 };
 
+const programTraverseHtml = (ast, indentation) => {
+    let html = '';
+    ast.body.map((exp) => html += (createHtmlTag(exp, indentation)));
+    return html;
+};
 const blockTraverseHtml = (ast, indentation) => {
     let html = indentation + '{<br>';
     ast.body.map((exp) => html += (createHtmlTag(exp, indentation) + '<br>'));
@@ -228,6 +236,7 @@ const assignmentExpTraverseHtml = (ast, indentation) => {
 
 
 const inithtmlTraverseHandler = () => {
+    htmlTraverseHandler['Program'] = programTraverseHtml;
     htmlTraverseHandler['FunctionDeclaration'] = functionTraverseHtml;
     htmlTraverseHandler['BlockStatement'] = blockTraverseHtml;
     htmlTraverseHandler['WhileStatement'] = whileExpTraverseHtml;
